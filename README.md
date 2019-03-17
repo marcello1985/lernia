@@ -1,4 +1,4 @@
-# geomadi
+# lernia
 Processing and training on geographical data
 files:
 * algo\_holtwinters.py: Holt Winter for time series
