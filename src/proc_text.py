@@ -1,15 +1,14 @@
 #%pylab inline
 import os, sys, gzip, random, csv, json, datetime, re
-sys.path.append(os.environ['LAV_DIR']+'/src/')
-baseDir = os.environ['LAV_DIR']
 import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
 
-def plog(text):
-    print(text)
-
+"""
+proc_text:
+utilities for text 
+"""
 
 def levenshtein_arr(seq1, seq2):  
     size_x = len(seq1) + 1

@@ -1,21 +1,15 @@
 #%pylab inline
 import os, sys, gzip, random, csv, json, datetime, re
-sys.path.append(os.environ['LAV_DIR']+'/src/')
-baseDir = os.environ['LAV_DIR']
 import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
 import seaborn as sns
 import scipy.stats as st
-import geopandas as gpd
-import shapely as sh
-import geomadi.geo_geohash
-from shapely.ops import cascaded_union
 from scipy import signal as sg
 import cv2
 import matplotlib.path as mpltPath
-
+import shapely as sh
 
 def plog(text):
     print(text)
