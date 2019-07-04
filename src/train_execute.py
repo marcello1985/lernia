@@ -8,8 +8,8 @@ import geomadi.train_model as tlib
 import geomadi.train_shape as shl
 import geomadi.train_score as t_f
 import geomadi.train_metric as t_m
+import geomadi.train_reshape as t_r
 import importlib
-import etl.etl_mapping as e_m
 import geomadi.series_stat as s_s
 from sklearn.metrics import mean_squared_error
 import sklearn as sk
@@ -297,7 +297,7 @@ def loadDf(fName,dateL,poi,mapL,isChi=False,idField="id_poi",hL1=[None]):
     sact = sact[sact[idField].isin(poi[idField])]
     return sact, hL
         
-def cilacLinWeight(sact,mist,hL,mapL,idField,isPlot=False):
+def cilacLinWeight(sact,mist,hL,idField,isPlot=False):
     keepL = []
     sact.loc[:,"weight"] = 0.
     weiL = []
@@ -313,8 +313,10 @@ def cilacLinWeight(sact,mist,hL,mapL,idField,isPlot=False):
         if (X.sum().sum()>0) & (y.shape[0]>0):
             y = y.values[0]
             if not any([not y.sum()>1]):
-                #c, n_cell = t_m.linWeight(X,y,n_source=5)
-                c, n_cell = t_m.linWeightOpt(X,y,n_source=5)
+                setX = X.sum(axis=1) > 0
+                setY = y > 0
+                setL = setX & setY
+                c, n_cell = t_m.linWeight(X[setL,:],y[setL],n_source=5)
         weiL.append(pd.DataFrame({idField:i,"cilac":g['cilac'],"weight":c}))
         tact.append(pd.DataFrame({idField:i,"day":hL,"value":np.multiply(X,c).sum(axis=1)}))
         sact.loc[g.index,"weight"] = c
@@ -352,26 +354,28 @@ def xvalRegressor(tist,idField,hL,sL):
     vist = []
     xist = []
     kpiL = []
+    fitL = []
     for i,g in tist.groupby(idField):
         iL = np.unique(g[idField])
         iN = len(iL)
         iValid = 0#int(iN*.8)
         clf = BaggingRegressor(DecisionTreeRegressor())
-        setL = g['day'] < '2019-02-00T'
-        X, y = g[sL].values, g['ref'].values
+        setL = g['day'] < '2019-02-15T'
+        setL = ([np.random.uniform(0,1) >.1  for x in range(g.shape[0])]) & (g['day'] < '2019-03-05T')
+        X, y = g[sL].values, g['ical'].values #g['ref'].values
         corL = []
         difL = []
-        nL = sum(setL)
         for l in range(10):
-            fit_w = clf.fit(X[:nL],y[:nL])
+            fit_w = clf.fit(X[setL],y[setL])
             y_pred = fit_w.predict(X)
-            post = pd.DataFrame({idField:i,"ref":g['ref'].values,"ref1":g['ref1'].values,"act":y_pred,"day":g['day'].values})
+            post = pd.DataFrame({idField:i,"ref":g['ref'].values,"ical":g['ical'].values,"act":y_pred,"day":g['day'].values})
             setL = post['day'] > '2019-02-00T'
-            cor = sp.stats.pearsonr(post.loc[setL,"ref"],post.loc[setL,"act"])[0]
+            setL = post['day'] < '2019-02-15T'
+            cor = sp.stats.pearsonr(post.loc[setL,"ical"],post.loc[setL,"act"])[0]
             if cor > 0.6:
                 break
-            nL += 2
         vist.append(pd.DataFrame(post))
+        fitL.append({idField:i,"model":fit_w})
         for k in range(6):
             g1 = g[g[idField] == random.choice(iL[iValid:])]
             X, y = g1[sL].values, g1['ref'].values
@@ -385,7 +389,7 @@ def xvalRegressor(tist,idField,hL,sL):
     vist = pd.concat(vist,axis=0)
     xist = pd.concat(xist,axis=0)    
     kpiL = pd.DataFrame(kpiL)
-    return vist, xist, kpiL
+    return vist, xist, kpiL, fitL
 
 def weekdayCorrection(sact,mist,hL):
     x1 = sact[hL].sum(axis=0)

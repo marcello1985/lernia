@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import matplotlib
 
+colorL = ["firebrick","sienna","olivedrab","crimson","steelblue","tomato","palegoldenrod","darkgreen","limegreen","navy","darkcyan","darkorange","brown","lightcoral","blue","red","green","yellow","purple","black"]
+
 def style():
     plt.rcParams['axes.facecolor'] = 'white'
     matplotlib.rc('xtick', labelsize=14) 

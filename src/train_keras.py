@@ -16,6 +16,7 @@ from keras.models import Model, Sequential
 from keras.callbacks import TensorBoard
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler
+from keras import optimizers
 import geomadi.train_score as t_s
 session_conf = tensorflow.ConfigProto(intra_op_parallelism_threads=8, inter_op_parallelism_threads=8)
 tensorflow.set_random_seed(1)
@@ -28,6 +29,7 @@ class trainKeras:
         """save data set matrix"""
         self.X = X
         self.setBoundary(X)
+        self.history = []
 
     def setBoundary(self,X):
         """Save the normalization boundaries"""
@@ -39,6 +41,24 @@ class trainKeras:
         self.yMin = np.min(y)
         self.yMax = np.max(y)
 
+    def setOptimizer(self,name="adam",**args):
+        """set optimizer for the model"""
+        if name == "sgd":
+            opt = optimizers.SGD(**args)
+        elif name == "rmsdrop":
+            opt = optimizers.RMSprop(**args)
+        elif name == "adagrad":
+            opt = optimizers.Adagrad(**args)
+        elif name == "adadelta":
+            opt = optimizers.Adadelta(**args)
+        elif name == "adam":
+            opt = optimizers.Adam(**args)
+        elif name == "adamax":
+            opt = optimizers.Adamax(**args)
+        else: 
+            opt = optimizers.Adadelta(**args)
+        self.opt = opt
+        
     def setX(self,X):
         """reset data set"""
         self.setBoundary(X)
@@ -47,13 +67,22 @@ class trainKeras:
     def getX(self):
         """return data set"""
         return self.X
+
+    def getEpochs(self):
+        """return the total number of epochs"""
+        history = self.history
+        loss = np.concatenate([x for x in history.history['loss']])
+        return len(loss)
     
     def plotHistory(self):
         """plot history of training performace"""
         if not self.history:
             raise Exception("train the model first")
-        plt.plot(self.history.history['loss'], label='train')
-        plt.plot(self.history.history['val_loss'], label='test')
+        history = self.history
+        loss = np.concatenate([x for x in history.history['loss']])
+        val_loss = np.concatenate([x for x in history.history['val_loss']])
+        plt.plot(loss,label='train')
+        plt.plot(val_loss,label='test')
         plt.legend()
         plt.show()
 
@@ -62,8 +91,9 @@ class trainKeras:
         if not self.model:
             raise Exception("train the model first")
         fName = fName.split(".")[0]
-        with open(fName+".json","w") as json_file:
-            json_file.write(self.model.to_json)
+        json.dump(self.model.to_json(),open(fName+".json","w"))
+        # with open(fName+".json","w") as json_file:
+        #     json_file.write(self.model.to_json())
         self.model.save_weights(fName+".h5")
 
     def loadModel(self,fName):
@@ -124,10 +154,8 @@ class trainKeras:
         
     def defModel(self):
         """return a new model if not previously defined"""
-        try:
-            return self.model
-        except:
-            pass
+        try: return self.model
+        except: pass
         self.model = self.newModel()
         return self.model
 
@@ -145,11 +173,12 @@ class trainKeras:
     def predict(self,X_test):
         return self.model.predict(X_test)
     
-    def train(self,y,epoch=50):
+    def train(self,y,**args):
         """train the current model, calculate scores"""
         X_train, X_test, y_train, y_test = self.splitSet(self.X,y)
         self.defModel()
-        self.history = self.model.fit(X_train,y_train,epochs=epoch,batch_size=72,validation_data=(X_test,y_test),verbose=0,shuffle=False)#,callbacks=[TensorBoard(log_dir='/tmp/lstm')])
+        history = self.autoencoder.fit(X_train,X_train,validation_data=(X_test,X_test),**args)#,callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
+        self.history.append(history)
         y_pred = self.predict(X_test)
         kpi = t_s.calcMetrics(y_pred, y_test)
         return self.model, kpi

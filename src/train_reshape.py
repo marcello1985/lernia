@@ -3,20 +3,21 @@ train_reshape:
 reshape dataframes and time series in preparation for training.
 """
 
-import random, csv, datetime, re
+import random, csv, datetime, re, os
 import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
 import geomadi.lib_graph as gra
+import geomadi.series_stat as s_s
 
-def day2time(hL):
+def day2time(hL,date_format="%Y-%m-%dT"):
     """transform day format into datetime (for plotting)"""
-    return [datetime.datetime.strptime(x,"%Y-%m-%dT") for x in hL]
+    return [datetime.datetime.strptime(x,date_format) for x in hL]
 
-def hour2time(hL):
+def hour2time(hL,date_format="%Y-%m-%dT%H:%M:%S"):
     """transform time format into datetime (for plotting)"""
-    return [datetime.datetime.strptime(x,"%Y-%m-%dT%H:%M:%S") for x in hL]
+    return day2time(hL,date_format=date_format)
 
 def timeCol(g):
     """returns all the columns with time format"""
@@ -26,7 +27,46 @@ def overlap(hL,hL1):
     """return only the overlapping values"""
     return sorted(list(set(hL) & set(hL1)))
 
-def binOutlier(y,nBin=6,threshold=3.5):
+def date2isocal(hL,date_format="%Y-%m-%dT"):
+    """transform a date into a isocalendar"""
+    isocal = [datetime.datetime.strptime(x,date_format).isocalendar() for x in hL]
+    if len(date_format) < 11:
+        iL = ["%02d-%02dT" % (x[1],x[2]) for x in isocal]
+    else:
+        hour = [datetime.datetime.strptime(x,date_format).hour for x in hL]
+        iL = ["%02d-%02dT%02d" % (x[1],x[2],y) for (x,y) in zip(isocal,hour)]
+    return iL
+
+def nonnull(y):
+    """return only non null numbers"""
+    return np.array([x for x in y if x == x])
+
+def mergeDataframe(dfL,idField="id_poi"):
+    """merge a list of dataframes into a single dataframe"""
+    if len(dfL) > 1:
+        tact = pd.merge(dfL[0],dfL[1],on=idField,how="outer",suffixes=["_x",""])
+    else:
+        tact = dfL[0]
+    for i in range(2,len(dfL)):
+        tact = tact.merge(dfL[i],on=idField,how="outer",suffixes=["_x",""])
+    for i in [x for x in tact.columns if bool(re.search("_x",x))]:
+        del tact[i]
+    return tact
+
+def mergeFiles(projD,fL,idField="id_poi"):
+    """merge files into a dataframe"""
+    dfL = []
+    for f in fL:
+      tact = pd.read_csv(projD+f,compression="gzip",dtype={idField:str})
+      dfL.append(tact)
+    return mergeDataframe(dfL,idField)
+
+def mergeDir(projDir,idField="id_poi"):
+    """merge all files in a directory"""
+    fL = os.listdir(projDir)
+    return mergeFiles(projDir,fL,idField)
+
+def binOutlier(y,nBin=6,threshold=3.5,isLabel=False):
     """bin with special treatment for the outliers"""
     n = nBin
     ybin = [threshold] + [x*100./float(n-1) for x in range(1,n-1)] + [100.-threshold]
@@ -42,6 +82,8 @@ def binOutlier(y,nBin=6,threshold=3.5):
     t = np.array(pd.cut(y,bins=np.unique(pbin),labels=range(len(np.unique(pbin))-1),right=True,include_lowest=True))
     t[np.isnan(t)] = -1
     t = np.asarray(t,dtype=int)
+    if isLabel:
+        return [pbin[x] for x in t], pbin
     return t, pbin
 
 def binMatrix(X,nBin=6,threshold=2.5):
@@ -121,6 +163,81 @@ def factorize(X):
     X = X.replace(float("Nan"),0)
     return X
 
+def applyBackfold(X):
+    """add the margin to the matrix mirroring the boundary"""
+    # X = np.vstack((X[-2,],X[-1,],X,X[0,],X[1,],X[2,]))
+    # X = np.hstack((X[:,-2].reshape(-1,1),X[:,-1].reshape(-1,1),X,X[:,0].reshape(-1,1),X[:,1].reshape(-1,1)))
+    X = np.vstack((X[-1,],X,X[0,]))
+    X = np.hstack((X[:,-1].reshape(-1,1),X,X[:,0].reshape(-1,1)))
+    return X
+
+def removeBackfold(X):
+    """remove the margins from the image"""
+    #return X[2:-3,2:-2]
+    return X[1:-1,1:-1]
+
+def applyInterp(X,step=3):
+    """interpolate betwen the steps"""
+    Y = np.zeros((X.shape[0]*step,X.shape[1]*step))
+    Y[:] = np.nan
+    Y[::step,::step] = X
+    ix = np.arange(X.shape[1])/X.shape[1]
+    iy = np.arange(X.shape[0])/X.shape[0]
+    interp = sp.interpolate.interp2d(ix,iy,X,kind='cubic')
+    ix = np.arange(Y.shape[1])/Y.shape[1]
+    iy = np.arange(Y.shape[0])/Y.shape[0]
+    return interp(ix,iy)
+    
+def removeInterp(X,step=3):
+    """interpolate betwen the steps"""
+    return X[::step,::step]
+    
+def applyRandom(X,delta=.5):
+    """apply random number to the matrix"""
+    G = np.random.rand(X.shape[0],X.shape[1])*delta - delta*.5
+    return  X*(1. - G)
+
+def weekMatrix(g,isBackfold=True,roll=0,col='value'):
+    """define a week as a 7x24 matrix"""
+
+def isocalInWeek(df,idField="id_poi",isBackfold=True,roll=0,col='value'):
+    """transform a dataframe with isocalendar into a series of images with 7(d)x24(h) pixels"""
+    hL = timeCol(df)
+    dm = df.melt(id_vars=idField,value_vars=hL)
+    dm.columns = [idField,"variable",col]
+    dm.loc[:,"week"] = dm['variable'].apply(lambda x: x[0:2])
+    dm.loc[:,"wday"] = dm['variable'].apply(lambda x: x[3:5])
+    dm.loc[:,"hour"] = dm['variable'].apply(lambda x: x[6:8])
+    dl = []
+    for i,g in dm.groupby([idField,'week']):
+        X = weekMatrix(g,isBackfold=isBackfold,roll=roll,col=col)
+        if X == 0 : continue
+        dl.append({idField:i[0],"week":i[1],"norm":norm,"values":X})
+    return dl
+
+def splitInWeek(df,idField="id_poi",isBackfold=True,roll=0,col='value',isInterp=False):
+    """morph a time series into an image representing a week (7x24) for convolutional neural network training"""
+    time = [datetime.datetime.fromtimestamp(x) for x in df['time']]
+    df.loc[:,"day"]  = [x.strftime("%Y-%m-%dT") for x in time]
+    df.loc[:,"hour"] = [x.hour for x in time]
+    ical = [x.isocalendar() for x in time]
+    df.loc[:,"wday"] = [x[2] for x in ical]
+    df.loc[:,"week"] = ["%02d-%02dT" % (x[0],x[1]) for x in ical]
+    dl = []
+    for i,g in df.groupby([idField,'week']):
+        X = g.pivot_table(columns="hour",index="wday",values=col,aggfunc=np.sum)
+        X = X.values
+        if X.shape != (7,24): continue
+        if roll > 0:   X = np.roll(X,roll,axis=1)
+        if isBackfold: X = applyBackfold(X)
+        if isInterp:   X = s_s.interpMissing2d(X)
+        norm = X.sum().sum()
+        if norm < 1e-10: continue
+        if norm != norm: continue
+        X = X/norm
+        dl.append({idField:i[0],"week":i[1],"norm":norm,"values":X})
+    return dl
+
 def dayInWeek(df,idField="id_poi"):
     """morph a time series into an image representing a week (7xN) for convolutional neural network training"""
     hL = [x for x in df.columns if bool(re.search("T",x))]
@@ -137,38 +254,6 @@ def dayInWeek(df,idField="id_poi"):
         den.append(dwP.reset_index())
         idL.append(i)
     den = pd.concat(den)
-    return X, idL, den, norm
-
-def splitInWeek(df,idField="id",isEven=True):
-    """morph a time series into an image representing a week (7x24) for convolutional neural network training"""
-    isocal = df['day'].apply(lambda x:datetime.datetime.strptime(x,"%Y-%m-%d").isocalendar())
-    df.loc[:,"wday"] = [x[2] for x in isocal]
-    df.loc[:,"week"] = [x[1] for x in isocal]
-    df.loc[:,"month"] = df['day'].apply(lambda x:x[2:7])
-    df.loc[:,"month"] = df[['month','week']].apply(lambda x: "%s-%02d" % (x[0],x[1]),axis=1)
-    hL = [x for x in df.columns.values if bool(re.match("^[-+]?[0-9]+$",str(x)))]
-    X = df[hL].values#[(10*7):(11*7)]
-    imgL = []
-    idL = []
-    den = pd.DataFrame()
-    for i,g in df.groupby(idField):
-        for j,gm in g.groupby("month"):
-            norm = gm[hL].max().max()
-            if norm in [float('nan'),float('inf'),-float('inf')]:
-                continue
-            gl = gm[hL].values#/norm
-            if gl.shape != (7,24):
-                continue
-            imgL.append(gl)
-            idL.append({"id":i,"week":j})
-            den = pd.concat([den,gm],axis=0)
-
-    idL = pd.DataFrame(idL)
-    N = len(imgL)
-    X = np.concatenate(imgL).reshape((N,7,24))
-    X[np.isnan(X)] = 0
-    norm = X.max().max().max()
-    X = X/norm
     return X, idL, den, norm
 
 def loadMnist():
@@ -199,29 +284,24 @@ def splitLearningSet(X,y,f_train=0.80,f_valid=0):
     x_valid = np.asarray(X[shuffleL[partS[2]:partS[3]]],dtype=np.int32)
     return y_train, y_test, y_valid, x_train, x_test, x_valid
 
-def day2isocal(pist,idField="id_poi",isDay=True):
+def day2isocal(df,idField="id_poi",isDay=True):
     """convert a series of time over multiple years into a isocalendar time"""
-    hL = pist.columns[[bool(re.search('-??T',x)) for x in pist.columns]]
-    nhL = pist.columns[[not bool(re.search('-??T',x)) for x in pist.columns]]
-    if isDay:
-        cal = day2time(hL)
-        ical = ["%02d-%02dT" % (x.isocalendar()[1],x.weekday()) for x in cal]
-    else:
-        cal = hour2time(hL)
-        ical = ["%02d-%02dT%02d:00:00" % (x.isocalendar()[1],x.weekday(),x.hour) for x in cal]
-
-    pist = pist[list(nhL) + list(hL)]
-    pist.columns = list(nhL) + list(ical)
-    mist = pist.groupby(pist.columns,axis=1).agg(np.mean)
-    sist = pist.groupby(pist.columns,axis=1).agg(np.std)
+    hL = df.columns[[bool(re.search('-??T',x)) for x in df.columns]]
+    nhL = df.columns[[not bool(re.search('-??T',x)) for x in df.columns]]
+    if isDay: ical = date2isocal(hL,date_format="%Y-%m-%dT")
+    else: ical = date2isocal(hL,date_format="%Y-%m-%dT%H:%M:%S")
+    df = df[list(nhL) + list(hL)]
+    df.columns = list(nhL) + list(ical)
+    mist = df.groupby(df.columns,axis=1).agg(np.mean)
+    sist = df.groupby(df.columns,axis=1).agg(np.std)
     ucal = sist.columns[[bool(re.search('-??T',x)) for x in sist.columns]]
     sist.loc[:,ucal] = sist.loc[:,ucal]/mist.loc[:,ucal]
-    mist.loc[:,nhL] = pist.loc[:,nhL]
-    sist.loc[:,nhL] = pist.loc[:,nhL]
+    mist.loc[:,nhL] = df.loc[:,nhL]
+    sist.loc[:,nhL] = df.loc[:,nhL]
     return mist, sist
 
 def hour2day(g):
-    """remove the time and add up to days"""
+    """remove time and add up to days"""
     hL = g.columns[[bool(re.search('-??T',x)) for x in g.columns]]
     nhL = g.columns[[not bool(re.search('-??T',x)) for x in g.columns]]
     dL = [x[:11] for x in hL]
@@ -231,8 +311,8 @@ def hour2day(g):
     c.loc[:,nhL] = c.loc[:,nhL]
     return c
     
-def isocal2day(g,dateL,idField):
-    """reform a dataframe into isocalendar"""
+def isocal2day(g,dateL,idField="id_poi"):
+    """express isocalendar columns into days from a reference list"""
     hL = [x for x in g.columns.values if bool(re.match(".*-.*",str(x)))]
     dL = pd.DataFrame({"isocal":hL})
     dL = pd.merge(dL,dateL[['day','isocal']],how="left",on="isocal")
@@ -248,8 +328,9 @@ def ical2date(hL,year=None):
         year = datetime.datetime.today().year
     orig = datetime.datetime.strptime(str(year) + "-01-01","%Y-%m-%d")
     lL = [orig + datetime.timedelta(days=x) for x in range(365)]
-    ical = ["%02d-%02dT" % (x.isocalendar()[1],x.weekday()) for x in lL]
-    lookUp = pd.DataFrame({"date":day2time(lL)
+    dL = [x.strftime("%Y-%m-%dT") for x in lL]
+    ical = ["%02d-%02dT" % (x.isocalendar()[1],x.isocalendar()[2]) for x in lL]
+    lookUp = pd.DataFrame({"date":dL
                            ,"ical":ical
                            })
     lookUp = lookUp.groupby("date").first().reset_index()
@@ -257,3 +338,9 @@ def ical2date(hL,year=None):
     lookUp = lookUp[lookUp['ical'].isin(ical)]
     return lookUp
 
+
+def dateFromIso(iso_year,iso_week,iso_day):
+    """date from isocalendar, 4th of January avoids calendar week 53 like in Gregorian calendar"""
+    jan4 = datetime.date(iso_year, 1, 4)
+    _, jan4_week, jan4_day = fourth_jan.isocalendar()
+    return jan4 + datetime.timedelta(days=iso_day-jan4_day, weeks=iso_week-jan4_week)

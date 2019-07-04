@@ -10,15 +10,19 @@ import scipy as sp
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from scipy.optimize import leastsq as least_squares
+from sklearn import linear_model
+from sklearn.decomposition import FastICA, PCA
+from matplotlib import mlab
+import math
 
 def serRunAv(y,steps=5):
     """perform a running average"""
     Nr = int(steps)
-    Ntot = y.shape[0]
+    Ntot = len(y)
     y_av = np.convolve(y,np.ones(Nr)/steps,'same')
     for i in range(0,int(steps/2)):
-        y_av[i] = sum(y[i:(Nr+i)])/steps
-        y_av[Ntot-i-1] = sum(y[(Ntot-i-Nr):(Ntot-i)])/steps
+        y_av[i] = np.nansum(y[i:(Nr+i)])/steps
+        y_av[Ntot-i-1] = np.nansum(y[(Ntot-i-Nr):(Ntot-i)])/steps
     return y_av
 
 def serRunAvDev(y,nInt=5):
@@ -34,9 +38,16 @@ def serRunAvDev(y,nInt=5):
         yf.append(np.mean(y[dn:dn1]))
     return x, yd, xf, yf
 
+def binAvStd(df,col_y="act",col_bin="time"):
+    """perform a binned average and standard deviation"""
+    def clampF(x):
+        return pd.Series({"y":np.mean(x[col_y]),"sy":np.std(x[col_y])})
+    dg = df.groupby(col_bin).apply(clampF).reset_index()
+    return dg
+
 def serSmooth(y,width=3,steps=5):
     """ kaiser window smoothing """
-    N = y.shape[0]
+    N = len(y)
     if N < 3:
         return y
     Nr = max(int(steps),3)
@@ -105,10 +116,8 @@ def interpMissing(y,isPlot=False):
     y = np.array(y)
     y = y.astype(np.float)
     nans = [x != x for x in y]
-    if sum(nans) <= 0.:
-        return y
-    if sum(nans) == len(nans):
-        return np.linspace(0,0,len(y))
+    if sum(nans) <= 0.: return y
+    if sum(nans) == len(nans): return np.linspace(0,0,len(y))
     no_nan = [x == x for x in y]
     indices = np.arange(len(y))
     interp = np.interp(indices,indices[no_nan],y[no_nan])
@@ -122,6 +131,21 @@ def interpMissing(y,isPlot=False):
     nans, x = nan_helper(y)
     y[nans] = np.interp(x(nans),x(~nans),y[~nans])
     return y
+
+def interpMissing2d(X,isPlot=False):
+    """interpolate missing 2d"""
+    X = np.array(X)
+    X = X.astype(np.float)
+    nans = X != X
+    if nans.sum() <= 0.: return X
+    no_nan = ~nans
+    ix, iy = np.arange(X.shape[1]), np.arange(X.shape[0])
+    xx, yy = np.meshgrid(ix,iy)
+    Y = sp.interpolate.griddata((xx[no_nan],yy[no_nan])
+                                ,X[no_nan].ravel()
+                                ,(xx,yy),method='linear'
+                                ,fill_value=X[no_nan].mean())
+    return Y
 
 def missingDense(x,y,isDense=False,quant=0.7):
     """return missing dense points"""
@@ -198,6 +222,18 @@ def decayM(M):
         popt1, pcov1 = curve_fit(ser_exp,np.array(range(0,r.size,7)),r[X],p0=(1))
         acM[i] = np.array([popt[0],pcov[0][0],popt1[0],pcov1[0][0]])
     return acM
+
+def linReg(x,y,isLog=False):
+    """perform a linear regression"""
+    x = np.array(x.copy())
+    y = np.array(y.copy())
+    if isLog:
+        x = np.log(x)
+        y = np.log(y)
+    regr = linear_model.LinearRegression()
+    X = np.reshape(x,(-1,1))
+    regr.fit(X,y)
+    return regr.predict(X)
 
 def gaussM(M):
     """Gaussian interpolation on matrix columns"""
@@ -326,3 +362,86 @@ def getCurveStat(y,isPlot=False):
 
     return {"daily_visit":y.mean(),"auto_decay":popt[0],"noise_decay":fopt[0],"harm_week":f_w,"harm_biweek":f_biw,"y_var":y.var()/y.mean(),"y_skew":y3.sum(),"chi2":chiSq,"n_sample":n}
 
+
+def fromMultivariate(X,mode="pca"):
+    """from a multivariate matrix X (d,n) extract the most significant component or the pdf
+    output:
+       density or main component, covariance
+    input:
+       X = (d,n) numpy array
+       mode = 'pca' (principal component analysis), 'ica' (independent component analysis), 'normal' pdf, 't-distribution' multivariate t-distribution, 'log-t' log multivariate t density
+    """
+    [n,d] = X.shape
+    df = d - 1
+    mu = X.mean(axis=0)
+    Xm = X-mu
+    S = np.cov(X.T)
+    det = np.linalg.det(S)
+    if abs(det) < 1e-24:
+        print('singular matrix, reduce dimensionality')
+        return np.array([0])
+    inv = np.linalg.inv(S)
+    if mode == 'normal':
+        var = sp.stats.multivariate_normal(mean=mu,cov=S)
+        pdf = var.pdf(X)
+        return pdf, S
+
+    if mode == 'norm-pdf':
+        norm = 1.0/ ( math.pow((2*math.pi),float(d)/2) * math.pow(det,1.0/2) )
+        inv2 = -0.5*np.dot(np.dot(Xm,inv).T,Xm)
+        result = norm*math.pow(math.e, inv2)
+        part1 = 1 / ( ((2* np.pi)**(len(mu)/2)) * (pow(det,.5)) )
+        part2 = 0.5* ((Xm).dot(inv).T.dot((Xm)))
+        return float(part1 * np.exp(part2))
+    x = np.random.randn(3,3)
+    mu  = x.mean(axis=1)
+    cov = np.cov(x)
+
+    part1 = 1 / ( ((2* np.pi)**(len(mu)/2)) * (np.linalg.det(cov)**(1/2)) )
+    part2 = (-1/2) * ((x-mu).T.dot(np.linalg.inv(cov))).dot((x-mu))
+    print(float(part1 * np.exp(part2)))
+        
+    if mode == 't-distribution':
+        Num = math.gamma(1. * (d+df) * .5)
+        Denom = math.gamma(1.*df*.5) * pow(df*math.pi,1.*d*.5) * pow(det,.5)
+        inv2 = 1 + (1./df)*np.dot(np.dot(Xm,inv).T,Xm)
+        Denom = Denom * pow(inv,1.*(d+df)/2)
+        pdf = 1. * Num / Denom
+        return pdf, S
+    
+    if mode == 'log-t':
+        V = df * S
+        V_inv = np.linalg.inv(V)
+        (sign, logdet) = np.linalg.slogdet(np.pi * V)
+        logz = -math.gamma(df/2.0 + d/2.0) + math.gamma(df/2.0) + 0.5*logdet
+        logp = -0.5*(df+d)*np.log(1+ np.sum(np.dot(Xm,V_inv)*Xm,axis=1))
+        logp = logp - logz
+        return logp, S
+    
+    if mode == 'ica':
+        ica = FastICA(n_components=d)
+        iS = ica.fit_transform(X)  # Reconstruct signals
+        iA = ica.mixing_  # Get estimated mixing matrix
+        iC = ica.components_
+        return iS[:,1], iA
+    
+    if mode == 'pca':
+        pca = PCA(n_components=d)
+        H = pca.fit_transform(X)  # Reconstruct signals based on orthogonal components
+        SH = np.cov(H.T)
+        return H[:,1], SH
+    
+    if mode == 'hotelling':
+        pc = PCA(n_components=d).fit(X)
+        coeff = pc.Wt
+        x = pc.transform(X).T
+        pc = mlab.PCA(X)
+        coeff = pc.Wt
+        x = pc.a.T
+        s = pc.s
+        cov = coeff.T.dot(np.diag(s)).dot(coeff) / (x.shape[1] - 1)
+        w = np.linalg.solve(cov, x)
+        t2 = (x * w).sum(axis=0)
+        ed = np.sqrt(sp.stats.chi2.ppf(0.95, 2))
+        np.linalg.cholesky(s)
+        return t2, cov

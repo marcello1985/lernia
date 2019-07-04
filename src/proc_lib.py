@@ -1,33 +1,74 @@
-import os, sys, gzip, random, csv, json, re
+"""
+proc_lib:
+spark utils to process and search for the output
+"""
+
+import os, json, re
 import pandas as pd
 import numpy as np
 import datetime
 import subprocess
+import matplotlib.pyplot as plt
+
+os.environ['JAVA_HOME'] = '/usr/lib/jvm/java-1.8.0-openjdk-amd64'
+baseDir = os.environ['LAV_DIR']
+# import findspark
+# findspark.init()
 import pyspark
-sc = pyspark.SparkContext.getOrCreate()
+from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext
 from pyspark.sql.types import *
 from pyspark.sql.functions import udf
-import matplotlib.pyplot as plt
 from pyspark.sql.functions import to_utc_timestamp, from_utc_timestamp
 from pyspark.sql.functions import date_format
 from pyspark.sql import functions as func
 from pyspark.sql.functions import col
+
+conf = (SparkConf()
+    .setMaster("yarn-client")
+    .setAppName("proc library")
+    .set("spark.deploy-mode", "cluster"))
+conf.set("spark.executor.memory", "10g")
+conf.set("spark.executor.cores", "10")
+conf.set("spark.executor.instances", "2")
+conf.set("spark.driver.maxResultSize", "10g")
+conf.set("spark.driver.memory", "10g")
+conf.set("spark.sql.crossJoin.enabled", "true")
+
+sc = SparkContext.getOrCreate()
 sqlContext = SQLContext(sc)
+sc.setLogLevel("ERROR")
+
 import tarfile
 
-baseDir = os.environ['LAV_DIR']
 key_file = baseDir + '/credenza/geomadi.json'
 cred = json.load(open(baseDir + "credenza/geomadi.json"))
 
-def parsePath(projDir,idlist=[None],is_lit=False,patterN="part-00000"):
+def getHdfsPattern(projDir,is_lit=False,patterN="part-00000",isRemote=False):
+    """download file list from hdfs"""
+    if isRemote:
+        cmd = 'ssh cr_hu "hdfs dfs -ls -R '+cred['hdfs']['address']+projDir
+    else:
+        cmd = 'hdfs dfs -ls -R '+projDir
+    files = str(subprocess.check_output(cmd,shell=True))
+    dL = [x.split(" ")[-1] for x in files.strip().split('\\n')]
+    dL = [x for x in dL if not bool(re.search("running",x))]
+    dL = [x for x in dL if bool(re.search(patterN,x))]
+    dL = ["/".join(x.split("/")[:-2]) for x in dL] 
+    dL = list(set(dL))
+    return dL
+
+def parsePath(projDir,idlist=[None],is_lit=False,patterN="part-00000",fL=[None]):
+    """collects all folder outputs into a single data frame"""
     idlist = list(idlist)
     id_list = ','.join(['"'+str(x)+'"' for x in np.unique(idlist)])
-    fL = []
-    for path,dirs,files in os.walk(projDir):
-        for f in files:
-            if re.search(patterN,f):
-                fL.append(path+"/"+f)
+    if not any(fL):
+        fL = []
+        for path,dirs,files in os.walk(projDir):
+            for f in files:
+                if re.search(patterN,f):
+                    fL.append(path+"/"+f)
+    fL = [x for x in fL if not bool(re.search("^\.",x.split("/")[-1]))]
     for i,f in enumerate(fL):
         print(f)
         print("%f" % (float(i)/float(len(fL))),end='\r',flush=True)
@@ -52,19 +93,6 @@ def parsePath(projDir,idlist=[None],is_lit=False,patterN="part-00000"):
     fL1 = [re.sub("/","-",x) for x in fL1]
     fL1 = [re.sub("^-","",x) for x in fL1]
     return ddf, fL1
-
-def getHdfsPattern(projDir,is_lit=False,patterN="part-00000",isRemote=False):
-    if isRemote:
-        cmd = 'ssh cr_hu "hdfs dfs -ls '+cred['hdfs']['address']+cred['hdfs']['output']+'/*'+patterN+'*"'
-    else:
-        cmd = 'hdfs dfs -ls '+cred['hdfs']['output']+'/*'+patterN+'*'
-    files = str(subprocess.check_output(cmd,shell=True))
-    dL = [x.split(" ")[-1] for x in files.strip().split('\\n')]
-    dL = [x for x in dL if not bool(re.search("running",x))]
-    dL = [x for x in dL if bool(re.search(patterN,x))]
-    dL = [x.split("/")[-2] for x in dL]
-    dL = list(set(dL))
-    return dL
 
 def parseHdfsCsv(projDir,idlist=[None],is_lit=False,patterN="part-00000",isRemote=False,isAgg=True):
     idlist = list(idlist)
@@ -101,37 +129,37 @@ def parseHdfsCsv(projDir,idlist=[None],is_lit=False,patterN="part-00000",isRemot
         if any(idlist):
             sqlContext.registerDataFrameAsTable(df,"table1")
             df = sqlContext.sql("SELECT * FROM table1 WHERE dominant_zone IN ("+id_list+")")
-        if f==fL[0] :
-            ddf = df
-        else :
-            ddf = ddf.unionAll(df)
+        if f==fL[0] : ddf = df
+        else : ddf = ddf.unionAll(df)
     return ddf, hL, job
 
-def parseParquet(projDir,isLit=False):
-    fL = []
-    for path,dirs,files in os.walk(projDir):
-        for f in files:
-            if re.search("part-",f):
-                fL.append(path+"/")
-                break
-    if not len(fL):
+def parseParquet(projDir,idlist=[None],is_lit=False,patterN="part-00000",dL=[None]):
+    """"parse parquet files from file list"""
+    if not any(dL):
+        dL = []
+        for path,dirs,files in os.walk(projDir):
+            for f in files:
+                if re.search(patterN,f):
+                    dL.append(path+"/")
+                    break
+    if not len(dL):
         return [],[]
-    for i,f in enumerate(fL):
-        print(f)
-        print("%f" % (float(i)/float(len(fL))) )
-        df = sqlContext.read.parquet(f)
-        if isLit:
-            df = df.withColumn("dir",func.lit(i))
-        if f==fL[0] :
-            ddf = df
-        else :
-            ddf = ddf.unionAll(df)
-    print('loaded')
-    fL1 = fL
-    fL1 = [re.sub(projDir,"",x) for x in fL1]
-    return ddf, fL1
+    
+    for i,d in enumerate(dL):
+        print("%.2f%%" % (float(i)/float(len(dL))*100.),end="\r",flush=True)
+        # fL = os.listdir(d)
+        # fL = [x for x in fL if bool(re.search(patterN,x))]
+        # fL = [x for x in fL if not bool(re.search("^\.",x.split("/")[-1]))]
+        # for f in fL:
+        df = sqlContext.read.parquet(d)
+        if is_lit: df = df.withColumn("dir",func.lit(i))
+        if i == 0: ddf = df
+        else : ddf = ddf.unionAll(df)
+    print("loaded {projDir}")
+    fL = [re.sub(projDir,"",x) for x in dL]
+    return ddf, fL
 
-def parseTarParquet(dname,fname,idlist=[None],patterN="part-00000",isLit=False):
+def parseTarParquet(dname,fname,idlist=[None],patterN="part-00000",is_lit=False):
     idlist = list(idlist)
     idLs = ','.join(['"'+str(x)+'"' for x in np.unique(idlist)])
     print(fname)
@@ -223,7 +251,7 @@ def parseTarPandas(dname,fname,idlist=[None],patterN="part-00000"):
 
 def writeCsv(df,fName):
     try:
-        df.coalesce(1).write.mode("overwrite").format('com.databricks.spark.csv').save(baseDir + "raw/mc/act.csv")
+        df.coalesce(1).write.mode("overwrite").format('com.databricks.spark.csv').save(fName)
     except:
         dp = df.toPandas()
         dp.to_csv(fName,index=False)

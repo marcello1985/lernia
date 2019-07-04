@@ -33,19 +33,19 @@ def calcMetrics(y1,y2):
         ,"dif":2.*(np.sum(y1)-np.sum(y2))/(np.sum(y1)+np.sum(y2))
     }
 
-def scorPerf(act,step="input",idField="id_clust"):
+def scorPerf(act,step="input",idField="id_poi",col1="act",col2="ref"):
     if act.shape[0] == 0:
         print('empty dataframe')
         return pd.DataFrame()
     def clampF(x):
         return pd.Series({
-            "r_"+step:sp.stats.pearsonr(x['act'],x['ref'])[0]
-            ,"d_"+step:(x['act'].sum()-x['ref'].sum())/(x['act'].sum()+x['ref'].sum())
-            ,"v_"+step:relErr(x['act'],x['ref'])
-            ,"s_"+step:x['ref'].sum()
+            "r_"+step:sp.stats.pearsonr(x[col1],x[col2])[0]
+            ,"d_"+step:(x[col1].sum()-x[col2].sum())/(x[col1].sum()+x[col2].sum())
+            ,"v_"+step:relErr(x[col1],x[col2])[2]
+            ,"s_"+step:x[col2].sum()
         })
     scorM = act.groupby([idField]).apply(clampF).reset_index()
-    print("score %s: %.2f" % (step,scorM[scorM['r_'+step] > 0.6].shape[0]/scorM.shape[0]) )
+    print("score %s: %.2f" % (step,scorM['r_'+step].mean()) )
     return scorM
 
 def scorStat(X,y):
