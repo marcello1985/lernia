@@ -20,15 +20,16 @@ import osmnx as ox
 import networkx as nx
 shapely.speedups.enable()
 
-def addRegion(poi,regionF):
+def addRegion(poi,regionF,field="GEN"):
     """assign a region to the poi"""
     region = gpd.GeoDataFrame.from_file(regionF)
-    region.index = region['GEN']
+    region.index = region[field]
     region = region['geometry']
     pL = poi[['x','y']].apply(lambda x: sh.geometry.Point(x[0],x[1]),axis=1)
     pnts = gpd.GeoDataFrame(geometry=pL)
     pnts = pnts.assign(**{key: pnts.within(geom) for key, geom in region.items()})
     for i in pnts.columns[1:]:
+        #if (i%10) == 0: print("process %.2f\r" % (i/pnts.shape[0]),end="\r",flush=True)
         poi.loc[pnts[i],"region"] = i
     return poi['region']
 

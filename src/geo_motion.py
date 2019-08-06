@@ -5,7 +5,7 @@ equation of motion
 
 import numpy as np
 import pandas as pd
-import geomadi.series_stat as s_s
+import albio.series_stat as s_s
 
 class motion:
     """calculation on equation of motion"""
@@ -114,3 +114,18 @@ class motion:
         motL.columns = ['t','x','y','s','a','m','st','sx','sy','ss','sa','sm','x1','y1','x2','y2']
         motL.loc[:,'sr'] = (motL['sx'] + motL['sy'])*.5
         return motL, mot['c']
+
+    def geoJson(self,mot,tL):
+        """create a geo json from density dataframe"""
+        mot = mot.replace(float('nan'),1e-10)
+        typD = [("int",int),("float",float),("string",str),("string",object)]
+        dtyp = []
+        for d in mot[tL].dtypes: dtyp.append([x[0] for x in typD if x[1] == d][0])
+        cL = [(x,y) for x,y in zip(tL,dtyp) if x not in ['tx']]
+        cL = [(re.sub("^x","lon_",x[0]),x[1]) for x in cL]
+        cL = [(re.sub("^y","lat_",x[0]),x[1]) for x in cL]
+        field = [{"name":x[0],"format":"","tableFieldIndex":y,"type":x[1]} for y,x in enumerate(cL)]
+        rows = [list(x[tL]) for i,x in mot.iterrows()]
+        geoD = {"fields":field,"rows":rows}
+        return geoD
+

@@ -155,7 +155,7 @@ def parseParquet(projDir,idlist=[None],is_lit=False,patterN="part-00000",dL=[Non
         if is_lit: df = df.withColumn("dir",func.lit(i))
         if i == 0: ddf = df
         else : ddf = ddf.unionAll(df)
-    print("loaded {projDir}")
+    print("loaded {}".format(projDir))
     fL = [re.sub(projDir,"",x) for x in dL]
     return ddf, fL
 
