@@ -15,7 +15,7 @@ from scipy.optimize import leastsq as least_squares
 
 def relErr(y1,y2):
     """compute the relative error"""
-    mean = np.mean(list(y1)+list(y2))
+    mean = .5*(np.mean(y1)+np.mean(y2))
     rmse = np.sqrt((y1-y2)**2).sum()/len(y1)
     err = rmse/mean
     return mean, rmse, err

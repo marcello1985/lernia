@@ -8,10 +8,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy as sp
-import geomadi.train_reshape as t_r
-import geomadi.train_modelList as modL
-import geomadi.train_score as t_s
+import lernia.train_reshape as t_r
+import lernia.train_modelList as modL
+import lernia.train_score as t_s
 from sklearn.preprocessing import StandardScaler, LabelEncoder, label_binarize
+import sklearn as sk
 
 class trainMod:
     """
@@ -142,6 +143,7 @@ class trainMod:
     
     def perfCla(self,clf,trainL,testL):
         """perform a single classification"""
+        print(clf['name'],clf['type'],clf['score'])
         t_start = time.clock()
         Nclass = len(np.unique(self.y))
         y = self.y
@@ -155,11 +157,7 @@ class trainMod:
         y_test = y[testL]
         mod = clf['mod'].fit(X_train,y_train)
         y_score = mod.predict_proba(X_test)
-        if clf['score'] == "ravel" :
-            y_score = y_score.ravel()
-            y_score1 = label_binarize(y_test,classes=range(Nclass))
-            y_score1 = y_score1.ravel()
-        else:
+        if isinstance(y_score,list):
             scoreL = []
             for i in range(Nclass):
                 try:
@@ -168,22 +166,28 @@ class trainMod:
                     scoreL.append(np.zeros(len(X_test)))
                 y_score = np.hstack(scoreL)
             y_score1 = y_test.ravel()
-        x_pr, y_pr, _ = skm.roc_curve(y_score1,y_score)
+        else :
+            #y_score = y_score[:,1]
+            y_score = y_score.ravel()
+            y_score1 = label_binarize(y_test,classes=range(Nclass))
+            y_score1 = y_score1.ravel()
+        # print(y_test.shape,y_score.shape,y_score1.shape)
+        x_pr, y_pr, _ = sk.metrics.roc_curve(y_score1,y_score)
         train_score = mod.score(X_train,y_train)
         test_score  = mod.score(X_test ,y_test )
         #cv = cross_validate(mod,self.X,self.y,scoring=['precision_macro','recall_macro'],cv=5,return_train_score=True)
         cv = "off"
-        fsc = skm.f1_score(y_test,mod.predict(X_test),average="weighted")
-        acc = skm.accuracy_score(y_test,mod.predict(X_test))
+        fsc = sk.metrics.f1_score(y_test,mod.predict(X_test),average="weighted")
+        acc = sk.metrics.accuracy_score(y_test,mod.predict(X_test))
         y_predict = mod.predict(X_test) == y_test
-        auc = skm.auc(x_pr,y_pr)## = np.trapz(fpr,tpr)
+        auc = sk.metrics.auc(x_pr,y_pr)## = np.trapz(fpr,tpr)
         t_end = time.clock()
         t_diff = t_end - t_start
         return mod, train_score, test_score, t_diff, x_pr, y_pr, auc, fsc, acc, cv
     
     def loopMod(self,paramF="train.json",test_size=0.4):
         """loop over all avaiable models"""
-        N = len(self)
+        N = len(self.y)
         shuffleL = random.sample(range(N),N)
         partS = [0,int(N*(1.-test_size)),int(N*(1.)),N]
         trainL = shuffleL[partS[0]:partS[1]]
@@ -198,7 +202,11 @@ class trainMod:
             clf = tml.retCat(index)
             if not clf['active']:
                 continue
+            # try:
             mod, trainS, testS, t_diff, x_pr, y_pr, auc, fsc, acc, cv = self.perfCla(clf,trainL,testL)
+            # except:
+            #     print('error: returning model')
+            #     return clf['mod'], trainR
             trainR.append([clf['name'],trainS,testS,t_diff,auc,fsc,acc,clf["type"]])
             model.append(mod)
             rocC.append([x_pr,y_pr])
@@ -224,7 +232,7 @@ class trainMod:
             print("first train the models .loopMod()")
             return 
         plt.clf()
-        plt.plot([0, 1],[0, 1],'k--',label="model | auc  f1   acc")
+        plt.plot([0, 1],[0, 1],'k--',label="model          | auc  f1   acc")
         for idx, mod in self.trainR.iterrows():
             plt.plot(self.rocC[idx][0],self.rocC[idx][1],label='%s | %0.2f %0.2f %0.2f ' %
                      (mod['model'],mod['auc'],mod['fsc'],mod['acc']))
@@ -334,7 +342,7 @@ def regressor(X,vf,vg,nXval=False,isShuffle=True,paramF="train.json"):
         fit_q = [fitL[x] for x in range(nXval) if corrL[x] == max(corrL)][0]
     return fit_q, corrL
 
-def regressorSingle(X,y,nXval=False,isShuffle=True,paramF="train.json"):
+def regressorSingle(X,y,nXval=6,isShuffle=True,paramF="train.json"):
     """apply a regressor"""
     tml = modL.modelList()
     clf = tml.regL['bagReg']['mod']
@@ -358,8 +366,8 @@ def regressorSingle(X,y,nXval=False,isShuffle=True,paramF="train.json"):
         y_pred = fit_q.predict(X)
         corrL.append(sp.stats.pearsonr(y,y_pred)[0])
         fitL.append(fit_q)
-    if np.isnan(corrL)[0]:
-        return fit_q, [0]        
+    # if np.isnan(corrL)[0]:
+    #     return fit_q, [0]        
     if False: # pick a random model
         nRandom = int(nXval*np.random.uniform())
         fit_q = fitL[nRandom]

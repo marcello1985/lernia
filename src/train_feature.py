@@ -8,6 +8,18 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from scipy.cluster.hierarchy import fcluster
+from scipy.cluster.hierarchy import dendrogram, linkage
+from sklearn import linear_model
+import sklearn as sk
+import albio
+
+def selectNumeric(X):
+    """selects only numeric features"""
+    numerics = ['int16','int32','int64','float16','float32','float64']
+    numerical_vars = list(X.select_dtypes(include=numerics).columns)
+    return X[numerical_vars]
 
 def variance(X):
     """reduce dimensionality based on low variance"""
@@ -28,11 +40,13 @@ def std(X,n_tail=2):
     
 def chi2(X,y):
     """chisquare score"""
+    from sklearn.feature_selection import SelectKBest, chi2
     X_new = SelectKBest(chi2,k=2).fit_transform(X,y)
     return X_new
     
 def kmeans(X,n_clust=5):
     """cluster features by kmeans"""
+    from sklearn.decomposition import PCA
     pca = PCA().fit(X)
     A_q = pca.components_.T
     if False:
@@ -58,7 +72,7 @@ def treeClas(X,y):
     X_new = model.transform(X)
     X_new.shape
     return X_new
-        
+
 def regression(X,y):
     """evaluate feature importance with regression coefficients"""
     clf = linear_model.RidgeCV(alphas=[0.1, 1.0, 10.0])
@@ -137,6 +151,27 @@ class clustLib():
         axarr[0,0].imshow(cpact1)
         axarr[0,1].imshow(mat)
         plt.show()
+        
+def featureRegularisation(X,y,method="lasso"):
+    """swithces between ridge and lasso regression"""
+    from sklearn.model_selection import train_test_split
+    from sklearn.linear_model import Lasso, LogisticRegression
+    from sklearn.feature_selection import SelectFromModel
+    from sklearn.preprocessing import StandardScaler
+    X = selectNumeric(X)
+    X_train, X_test, y_train, y_test = train_test_split(X,y,test_size=0.3,random_state=0)
+    scaler = StandardScaler()
+    scaler.fit(X_train)
+    X_train = scaler.transform(X_train)
+    if method == 'lasso':
+        sel_ = SelectFromModel(LogisticRegression(C=1, penalty="l1"))
+        sel_.fit(X_train, y_train)
+        feat_weight = 1.*sel_.get_support()
+    else: 
+        l1_logit = LogisticRegression(C=1, penalty='l2')
+        l1_logit.fit(X_train, y_train)
+        feat_weight = l1_logit.coef_.sum(axis=0)
+    return feat_weight
 
 def featureImportance(X,y,tL,method=0):
     from sklearn.datasets import make_classification
@@ -145,7 +180,7 @@ def featureImportance(X,y,tL,method=0):
     from sklearn.linear_model import LogisticRegression
     from sklearn.feature_selection import SelectKBest
     from sklearn.feature_selection import chi2
-    from xgboost import XGBClassifier
+    #from xgboost import XGBClassifier
     modelN = 'gradBoost'
 
     if method == 0:
@@ -189,4 +224,14 @@ def featureImportance(X,y,tL,method=0):
     impD.sort_values("importance",inplace=True,ascending=False)
     impD = impD.reset_index()
     return impD, modelN
+
+def plotFeatImp(X,y,tL,ax=None):
+    """plot all feature importance"""
+    if ax == None:
+        fig, ax = plt.subplots(1,1)
+    for i in range(5):
+        imp0, name0 = featureImportance(X,y,tL,method=i)
+        ax.bar(imp0.label,imp0.importance,alpha=0.3,label=name0)
+    ax.legend()
+    plt.xticks(rotation=15)
 

@@ -8,8 +8,7 @@ import numpy as np
 import pandas as pd
 import scipy as sp
 import matplotlib.pyplot as plt
-import geomadi.lib_graph as gra
-import geomadi.train_modelList as modL
+import lernia.train_modelList as modL
 import statsmodels.api as sm
 import sklearn as sk
 from scipy.optimize import leastsq as least_squares
@@ -21,7 +20,7 @@ def mutualInformation(x,y):
     y_value_list = np.unique(y)
     Px = np.array([ len(x[x==xval])/float(len(x)) for xval in x_value_list ]) #P(x)
     Py = np.array([ len(y[y==yval])/float(len(y)) for yval in y_value_list ]) #P(y)
-    for i in xrange(len(x_value_list)):
+    for i in range(len(x_value_list)):
         if Px[i] ==0.:
             continue
         sy = y[x == x_value_list[i]]
@@ -31,6 +30,59 @@ def mutualInformation(x,y):
         t = pxy[Py>0.]/Py[Py>0.] /Px[i] # log(P(x,y)/( P(x)*P(y))
         sum_mi += sum(pxy[t>0]*np.log2( t[t>0]) ) # sum ( P(x,y)* log(P(x,y)/( P(x)*P(y)) )
     return sum_mi
+
+def information_gain(X, y):
+    """information gain between series"""
+    def _calIg():
+        entropy_x_set = 0
+        entropy_x_not_set = 0
+        for c in classCnt:
+            probs = classCnt[c] / float(featureTot)
+            entropy_x_set = entropy_x_set - probs * np.log(probs)
+            probs = (classTotCnt[c] - classCnt[c]) / float(tot - featureTot)
+            entropy_x_not_set = entropy_x_not_set - probs * np.log(probs)
+        for c in classTotCnt:
+            if c not in classCnt:
+                probs = classTotCnt[c] / float(tot - featureTot)
+                entropy_x_not_set = entropy_x_not_set - probs * np.log(probs)
+        return entropy_before - ((featureTot / float(tot)) * entropy_x_set
+                             +  ((tot - featureTot) / float(tot)) * entropy_x_not_set)
+
+    tot = X.shape[0]
+    classTotCnt = {}
+    entropy_before = 0
+    for i in y:
+        if i not in classTotCnt:
+            classTotCnt[i] = 1
+        else:
+            classTotCnt[i] = classTotCnt[i] + 1
+    for c in classTotCnt:
+        probs = classTotCnt[c] / float(tot)
+        entropy_before = entropy_before - probs * np.log(probs)
+
+    nz = X.T.nonzero()
+    pre = 0
+    classCnt = {}
+    featureTot = 0
+    information_gain = []
+    for i in range(0, len(nz[0])):
+        if (i != 0 and nz[0][i] != pre):
+            for notappear in range(pre+1, nz[0][i]):
+                information_gain.append(0)
+            ig = _calIg()
+            information_gain.append(ig)
+            pre = nz[0][i]
+            classCnt = {}
+            featureTot = 0
+        featureTot = featureTot + 1
+        yclass = y[nz[1][i]]
+        if yclass not in classCnt:
+            classCnt[yclass] = 1
+        else:
+            classCnt[yclass] = classCnt[yclass] + 1
+    ig = _calIg()
+    information_gain.append(ig)
+    return np.asarray(information_gain)
 
 def linLeastSq(X,y):
     """linear model with least square"""

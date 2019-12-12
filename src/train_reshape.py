@@ -70,6 +70,17 @@ def mergeDir(projDir,idField="id_poi"):
     fL = os.listdir(projDir)
     return mergeFiles(projDir,fL,idField)
 
+def normPercentile(y,perc=[1,99]):
+    """normalize the function within the first and the last percentile"""
+    y1 = y[y==y]
+    norm = y1.max()
+    tmin = y1.min()
+    tmin, norm = np.percentile(y1,[1,99])
+    y = (y-tmin)/(norm-tmin)
+    y[y < 0.] = float('nan')
+    y[y > 1.] = float('nan')
+    return y
+
 def binOutlier(y,nBin=6,threshold=3.5,isLabel=False):
     """bin with special treatment for the outliers"""
     n = nBin
@@ -102,7 +113,7 @@ def binMatrix(X,nBin=6,threshold=2.5):
     
 def binVector(y,nBin=6,threshold=2.5):
     """bin a continuum parametric vector"""
-    y, psum = t_f.binOutlier(y,nBin=nBin,threshold=threshold)
+    y, psum = binOutlier(y,nBin=nBin,threshold=threshold)
     y = np.array(y).astype(int)
     return y, psum
 
@@ -201,10 +212,21 @@ def applyRandom(X,delta=.5):
     G = np.random.rand(X.shape[0],X.shape[1])*delta - delta*.5
     return  X*(1. - G)
 
-def weekMatrix(g,isBackfold=True,roll=0,col='value'):
+def weekMatrix(g,isBackfold=True,roll=0,col='value',isInterp=False):
     """define a week as a 7x24 matrix"""
-
-def isocalInWeek(df,idField="id_poi",isBackfold=True,roll=0,col='value'):
+    X = g.pivot_table(columns="hour",index="wday",values=col,aggfunc=np.sum)
+    X = X.values
+    if X.shape != (7,24): return 0,0,False
+    if roll > 0:   X = np.roll(X,roll,axis=1)
+    if isBackfold: X = applyBackfold(X)
+    if isInterp:   X = s_s.interpMissing2d(X)
+    norm = X.max().max()
+    if norm < 1e-10: return 0,0,False
+    if norm != norm: return 0,0,False
+    X = X/norm
+    return X, norm, True
+    
+def isocalInWeek(df,idField="id_poi",isBackfold=True,roll=0,col='value',isInterp=False):
     """transform a dataframe with isocalendar into a series of images with 7(d)x24(h) pixels"""
     hL = timeCol(df)
     dm = df.melt(id_vars=idField,value_vars=hL)
@@ -214,8 +236,8 @@ def isocalInWeek(df,idField="id_poi",isBackfold=True,roll=0,col='value'):
     dm.loc[:,"hour"] = dm['variable'].apply(lambda x: x[6:8])
     dl = []
     for i,g in dm.groupby([idField,'week']):
-        X = weekMatrix(g,isBackfold=isBackfold,roll=roll,col=col)
-        if X == 0 : continue
+        X, norm, status = weekMatrix(g,isBackfold=isBackfold,roll=roll,col=col,isInterp=isInterp)
+        if not status: continue
         dl.append({idField:i[0],"week":i[1],"norm":norm,"values":X})
     return dl
 

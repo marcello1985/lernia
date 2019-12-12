@@ -17,11 +17,11 @@ from keras.callbacks import TensorBoard
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler
 from keras import optimizers
-import geomadi.train_score as t_s
-session_conf = tensorflow.ConfigProto(intra_op_parallelism_threads=8, inter_op_parallelism_threads=8)
-tensorflow.set_random_seed(1)
-sess = tensorflow.Session(graph=tensorflow.get_default_graph(), config=session_conf)
-keras.backend.set_session(sess)
+import lernia.train_score as t_s
+# session_conf = tensorflow.ConfigProto(intra_op_parallelism_threads=8, inter_op_parallelism_threads=8)
+# tensorflow.set_random_seed(1)
+# sess = tensorflow.Session(graph=tensorflow.get_default_graph(), config=session_conf)
+# keras.backend.set_session(sess)
 
 class trainKeras:
     """train_keras basics utilities"""
@@ -74,17 +74,18 @@ class trainKeras:
         loss = np.concatenate([x for x in history.history['loss']])
         return len(loss)
     
-    def plotHistory(self):
+    def plotHistory(self,ax=None):
         """plot history of training performace"""
         if not self.history:
             raise Exception("train the model first")
+        if ax == None:
+            fig, ax = plt.subplots(1,1)
         history = self.history
-        loss = np.concatenate([x for x in history.history['loss']])
-        val_loss = np.concatenate([x for x in history.history['val_loss']])
-        plt.plot(loss,label='train')
-        plt.plot(val_loss,label='test')
-        plt.legend()
-        plt.show()
+        loss = np.concatenate([x.history['loss'] for x in history])
+        val_loss = np.concatenate([x.history['val_loss'] for x in history])
+        ax.plot(loss,label='train')
+        ax.plot(val_loss,label='test')
+        ax.legend()
 
     def saveModel(self,fName):
         """save last trained model"""
@@ -137,6 +138,7 @@ class trainKeras:
         """define a convolutional neural network for small images"""
         k_size = (3,2) #(5,5)
         convS = [8,16] #[32,64]
+        input_shape = self.X.shape
         model = Sequential()
         model.add(Conv2D(convS[0],kernel_size=k_size,strides=(1,1),activation='relu',input_shape=input_shape))
         model.add(MaxPooling2D(pool_size=(2,2),strides=(2,2)))
@@ -177,9 +179,9 @@ class trainKeras:
         """train the current model, calculate scores"""
         X_train, X_test, y_train, y_test = self.splitSet(self.X,y)
         self.defModel()
-        history = self.autoencoder.fit(X_train,X_train,validation_data=(X_test,X_test),**args)#,callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
+        history = self.model.fit(X_train,y_train,validation_data=(X_test,y_test))#,**args)#,callbacks=[TensorBoard(log_dir='/tmp/autoencoder')])
         self.history.append(history)
-        y_pred = self.predict(X_test)
+        y_pred = self.predict(X_test).ravel()
         kpi = t_s.calcMetrics(y_pred, y_test)
         return self.model, kpi
     
@@ -207,13 +209,14 @@ class trainKeras:
         self.perfL = perfL
         return perfL
     
-    def plotFeatImportance(self,perfL):
+    def plotFeatImportance(self,perfL,ax=[None]):
         """boxplot of scores per feature"""
-        fig, ax = plt.subplots(1,2)
+        if ax[0] == None:
+            fig, ax = plt.subplots(1,2)
         perfL.boxplot(by="feature",column="rel_err",ax=ax[0])
         perfL.boxplot(by="feature",column="cor",ax=ax[1])
         for a in ax:
             for tick in a.get_xticklabels():
-                tick.set_rotation(45)
-        plt.show()
+                tick.set_rotation(15)
+        return ax
 

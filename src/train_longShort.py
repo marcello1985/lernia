@@ -20,8 +20,8 @@ from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import KFold
 from sklearn.pipeline import Pipeline
-import geomadi.train_score as t_s
-from geomadi.train_keras import trainKeras
+import lernia.train_score as t_s
+from lernia.train_keras import trainKeras
 
 class timeSeries(trainKeras):
     """keras on time series"""
@@ -151,12 +151,13 @@ class timeSeries(trainKeras):
         self.input_shape = (X_train.shape[1],X_train.shape[2])
         return X_train, X_test, y_train, y_test
 
-    def predict(self,X,y):
-        X_train, X_test, y_train, y_test = self.splitSet(X,y,portion=.0)
-        y_scaled = self.model.predict(X_test)
-        y_pred = y_scaled[:,0]*(self.yMax+self.yMin) + self.yMin
-        y_test1 = y_test*(self.yMax+self.yMin) + self.yMin
-        return y_pred, y_test1
+    def predict(self,X_test):
+        # X_train, X_test, y_train, y_test = self.splitSet(X,y,portion=.0)
+        # y_scaled = self.model.predict(X_test)
+        # y_pred = y_scaled[:,0]*(self.yMax+self.yMin) + self.yMin
+        # y_test1 = y_test*(self.yMax+self.yMin) + self.yMin
+        # return y_pred, y_test1
+        return self.model.predict(X_test)
 
     def forecastLongShort(self,y,ahead=28,epoch=50,n_in=2,n_out=1):
         """forecast on ahead time points"""

@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy as sp
-import geomadi.series_stat as s_s
+import albio.series_stat as s_s
+import sklearn as sk
 
 def periodic(X,period=24,isPlot=False):
     """feature selection of signals over period"""
@@ -167,7 +168,7 @@ def statistical(X):
 def calcPCA(X):
     """return PCA matrix"""
     pca = sk.decomposition.PCA().fit(X)
-    return pca.transform(X)
+    return pca.transform(X), pca.explained_variance_ratio_
        
 def smooth(X,width=3,steps=5):
     """smooth signal"""

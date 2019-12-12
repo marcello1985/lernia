@@ -12,7 +12,9 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import geomadi.lib_graph as gra
 from sklearn.metrics import confusion_matrix
+import albio
 import albio.series_stat as s_s
+import lernia
 import lernia.train_reshape as t_r
 import lernia.train_score as t_c
 import matplotlib
@@ -31,7 +33,7 @@ def plotHist(y,nBin=7,threshold=2.5,lab="",isLog=False,ax=None):
     psum = psum[:lenx]
     mHist1 = mHist1[:lenx]
     delta = (psum[-1]-psum[1])/float(len(psum))
-    ax.bar(psum,mHist1,width=delta,label="bin_"+lab,fill=False,alpha=0.5,color=colors[0],linewidth=2)
+    ax.bar(psum,mHist1,width=delta,label=lab,fill=False,alpha=0.5,color=colors[0],linewidth=2)
     #plt.plot(psum[1:],mHist,label=lab,linewidth=2)
     ax.legend()
     if isLog:
@@ -370,12 +372,64 @@ def plotOccurrence(y,ax=None):
     
 def plotCorr(X,labV=None,ax=None):
     """plot a correlation heatmap"""
+    if ax == None:
+        fig, ax = plt.subplots(1,1)
     if labV:
         corMat = pd.DataFrame(X,columns=labV).corr()
     else:
         corMat = np.corrcoef(X.T)
     sns.heatmap(corMat, vmax=1, square=True,annot=True,cmap='RdYlGn',ax=ax)
 
+def plotCrossMatrix(X,ax=[[None]]):
+    """produce a plot of four different cross information kpi"""
+    from sklearn.metrics.pairwise import chi2_kernel
+    from sklearn.svm import SVC
+    import sklearn.metrics.pairwise as paired 
+    if ax[0][0] == None:
+        fig, ax = plt.subplots(2,2)
+    def func(x,y):
+        return sp.stats.pearsonr(x,y)[0]
+    corM = albio.series_stat.cross_funcM(X,func)
+    def func(x,y):
+        return sp.stats.spearmanr(x,y)[0]
+        #return paired.cosine_similarity(x,y)
+    ranM = albio.series_stat.cross_funcM(X,func)
+    def func(x,y):
+        #return sk.feature_selection.mutual_info_classif(x,y)
+        return sk.metrics.mutual_info_score(x,y)
+        #return lernia.train_metric.mutualInformation(x,y)
+    mutM = albio.series_stat.cross_funcM(X,func)
+    def func(x,y):
+        mean = .5*(np.mean(x)+np.mean(y))
+        rmse = np.sqrt((x-y)**2).sum()/len(x)
+        err = rmse/mean
+        return err
+        # return lernia.train_score.relErr(x,y)
+    errM = albio.series_stat.cross_funcM(X,func)
+    fig, ax = plt.subplots(2,2)
+
+    ax[0][0].set_title("Pearson r")
+    ax[0][1].set_title("Spearman r")
+    ax[1][0].set_title("Info gain")
+    ax[1][1].set_title("rel_err")
+    imgM = pd.DataFrame(corM,index=X.columns,columns=X.columns)
+    sns.heatmap(imgM, vmax=1, square=True,annot=True,cmap='RdYlGn',ax=ax[0][0])
+    imgM = pd.DataFrame(ranM,index=X.columns,columns=X.columns)
+    sns.heatmap(imgM, vmax=1, square=True,annot=True,cmap='RdYlGn',ax=ax[0][1])
+    imgM = pd.DataFrame(mutM,index=X.columns,columns=X.columns)
+    sns.heatmap(imgM, vmax=1, square=True,annot=True,cmap='RdYlGn',ax=ax[1][0])
+    imgM = pd.DataFrame(errM,index=X.columns,columns=X.columns)
+    sns.heatmap(imgM, vmax=1, square=True,annot=True,cmap='RdYlGn',ax=ax[1][1])
+    for a in ax.flat:
+        for tick in a.get_xticklabels():
+            tick.set_rotation(15)
+        for tick in a.get_yticklabels():
+            tick.set_rotation(15)
+
+    plt.show()    
+    
+    
+    
 def plotConfMat(y,y_pred):
     """plot confusion matrix"""
     cm = confusion_matrix(y,y_pred)
@@ -446,7 +500,7 @@ def plotParallel(frame, class_column, cols=None, ax=None, color=None, use_column
 
 def plotSankey(df,col_1="1",col_2="2",title="reshuffling"):
     """plot a sankey diagram"""
-    from pySankey import sankey
+    #from pySankey import sankey
     sankey.sankey(df[col_1],df[col_2],aspect=20,fontsize=12)
     plt.title(title)
     plt.show()

@@ -48,32 +48,32 @@ import sklearn.naive_bayes
 import sklearn.neural_network
 import sklearn.svm
 import sklearn.tree
-import statsmodels.formula.api as sm
+# import statsmodels.formula.api as sm
 
 class modelList():
     """list of sklearn models to iterate"""
     catCla = [
-        {"active":True,"name":"random_forest"  ,"type":"class","score":"stack","mod":sk.ensemble.RandomForestClassifier()}
-        ,{"active":True,"name":"decision_tree" ,"type":"class","score":"stack","mod":sk.tree.DecisionTreeClassifier()}
-        ,{"active":True,"name":"extra_tree"    ,"type":"class","score":"stack","mod":sk.ensemble.ExtraTreesClassifier()}
-        ,{"active":True,"name":"perceptron"    ,"type":"class","score":"ravel","mod":sk.neural_network.MLPClassifier()}
-        ,{"active":True,"name":"k_neighbors"   ,"type":"class","score":"stack","mod":sk.neighbors.KNeighborsClassifier()}
-        ,{"active":True,"name":"grad_boost"    ,"type":"logit","score":"ravel","mod":sk.ensemble.GradientBoostingClassifier()}
+        {"active":True ,"name":"random_forest","type":"class","score":"ravel","mod":sk.ensemble.RandomForestClassifier()}
+        ,{"active":True,"name":"decision_tree  ","type":"class","score":"ravel","mod":sk.tree.DecisionTreeClassifier()}
+        ,{"active":True,"name":"extra_tree     ","type":"class","score":"ravel","mod":sk.ensemble.ExtraTreesClassifier()}
+        ,{"active":True,"name":"perceptron     ","type":"class","score":"ravel","mod":sk.neural_network.MLPClassifier()}
+        ,{"active":True,"name":"k_neighbors    ","type":"class","score":"ravel","mod":sk.neighbors.KNeighborsClassifier()}
+        ,{"active":True,"name":"grad_boost     ","type":"logit","score":"ravel","mod":sk.ensemble.GradientBoostingClassifier()}
         ,{"active":False,"name":"support_vector","type":"logit","score":"ravel","mod":sk.svm.SVC()}
-        ,{"active":True,"name":"discriminant"  ,"type":"logit","score":"ravel","mod":sk.discriminant_analysis.LinearDiscriminantAnalysis()}
-        ,{"active":True,"name":"logit_reg"     ,"type":"logit","score":"ravel","mod":sk.linear_model.LogisticRegression()}
+        ,{"active":True,"name":"discriminant   ","type":"logit","score":"ravel","mod":sk.discriminant_analysis.LinearDiscriminantAnalysis()}
+        ,{"active":True,"name":"logit_reg      ","type":"logit","score":"ravel","mod":sk.linear_model.LogisticRegression()}
         #,sk.dummy.DummyClassifier(strategy='stratified',random_state=10)
 #        ,{"active":True,"name":"keras"         ,"type":"logit","score":"ravel","mod":modKeras()}
     ]
 
     regL = {
         "decTree":{"active":True,"name":"decision tree reg","type":"class","score":"stack","mod":DecisionTreeRegressor(criterion='mse', max_depth=None, max_features=None, max_leaf_nodes=None, min_impurity_decrease=0.0, min_impurity_split=None, min_samples_leaf=1,min_samples_split=2, min_weight_fraction_leaf=0.0,presort=False, random_state=None, splitter='best')}
-        ,"bagReg":{"active":True,"name":"bagging regressor","type":"class","score":"stack","mod":BaggingRegressor(base_estimator=DecisionTreeRegressor(),bootstrap=True, bootstrap_features=False, max_features=1.0,max_samples=1.0, n_estimators=10, n_jobs=None, oob_score=False,random_state=None, verbose=0, warm_start=False)}
+        ,"bagReg":{"active":True,"name":"bagging regressor","type":"class","score":"stack","mod":BaggingRegressor(base_estimator=DecisionTreeRegressor(),bootstrap=True, bootstrap_features=False, max_features=1.0,max_samples=1.0, n_estimators=10, n_jobs=1, oob_score=False,random_state=None, verbose=0, warm_start=False)}
         ,"lasso":{"active":True,"name":"lasso","type":"class","score":"stack","mod":linear_model.Lasso(alpha=0.05,max_iter=1000,normalize=False,positive=True,precompute=True,random_state=None,selection='cyclic',tol=0.0001,warm_start=True)}
         ,"linear":{"active":True,"name":"linear","type":"class","score":"stack","mod":linear_model.LinearRegression(copy_X=True, fit_intercept=False,n_jobs=None,normalize=False)}
         ,"elastic":{"active":True,"name":"linear","type":"class","score":"stack","mod":linear_model.ElasticNet(alpha=1.0, copy_X=True, fit_intercept=False, l1_ratio=0.5, max_iter=1000, normalize=False, positive=False, precompute=True,random_state=None, selection='cyclic', tol=1e-4, warm_start=False)}
         ,"elastic_cv":{"active":True,"name":"linear","type":"class","score":"stack","mod":linear_model.ElasticNetCV(alphas=None, copy_X=True, cv=5, eps=0.001,fit_intercept=False, l1_ratio=0.3, max_iter=2000, n_alphas=200,n_jobs=None, normalize=False, positive=False, precompute='auto',random_state=None,selection='cyclic',tol=0.0001,verbose=0)}
-        ,"perceptron_time":{"active":True,"name":"linear","type":"class","score":"stack","mod":sklearn.neural_network.MLPRegressor(activation='relu', alpha=1e+6, batch_size='auto', beta_1=0.85,beta_2=0.999, early_stopping=False, epsilon=1e-09,hidden_layer_sizes=(7,7,), learning_rate='constant',learning_rate_init=0.09, max_iter=250, momentum=0.9,n_iter_no_change=10, nesterovs_momentum=True, power_t=0.5,random_state=None, shuffle=True, solver='lbfgs', tol=1e-4,validation_fraction=0.15, verbose=False, warm_start=False)}
+        ,"perceptron_time":{"active":True,"name":"linear","type":"class","score":"stack","mod":sklearn.neural_network.MLPRegressor(activation='relu', alpha=1e+6, batch_size='auto', beta_1=0.85,beta_2=0.999, early_stopping=False, epsilon=1e-09,hidden_layer_sizes=(7,7,), learning_rate='constant',learning_rate_init=0.09, max_iter=250, momentum=0.9, nesterovs_momentum=True, power_t=0.5,random_state=None, shuffle=True, solver='lbfgs', tol=1e-4,validation_fraction=0.15, verbose=False, warm_start=False)}
         ,"perceptron":{"active":True,"name":"linear","type":"class","score":"stack","mod":sklearn.neural_network.MLPRegressor(activation='relu',learning_rate='constant',solver='lbfgs',epsilon=1e-09)}
     }
     gridL = {

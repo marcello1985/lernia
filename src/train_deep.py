@@ -15,7 +15,7 @@ from keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Flatt
 from keras.models import Model, Sequential
 from keras.callbacks import TensorBoard
 from keras.wrappers.scikit_learn import KerasRegressor
-import geomadi.train_score as t_s
+import lernia.train_score as t_s
 from geomadi.train_keras import trainKeras
 
 class regressor(trainKeras):
